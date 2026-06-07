@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🪙 雲端同步點數管理系統 (全新獨立版)</title>
+    <title>🪙 雲端同步點數管理系統 (完美保留版)</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -22,7 +22,7 @@
 
 <div id="loadingOverlay" class="loading-overlay">
     <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
-    <span class="ms-2 fw-bold">新系統雲端同步中...</span>
+    <span class="ms-2 fw-bold">雲端資料同步中...</span>
 </div>
 
 <div id="passwordModal" class="password-modal d-none">
@@ -91,7 +91,7 @@
 
 <div class="container py-4">
     <header class="pb-3 mb-4 border-bottom d-flex justify-content-between align-items-center">
-        <span class="fs-4 fw-bold">☁️ 雲端點數集點管理系統 <span class="badge bg-primary fs-6 fw-normal">V3 全新版本</span></span>
+        <span class="fs-4 fw-bold">☁️ 雲端點數集點管理系統 <span class="badge bg-secondary fs-6 fw-normal">完美刪改版</span></span>
         <div class="btn-group" role="group">
             <input type="radio" class="btn-check" name="roleSwitch" id="roleUser" checked onclick="switchRole('user')">
             <label class="btn btn-outline-primary" for="roleUser">👤 使用者端</label>
@@ -217,22 +217,19 @@
 // ⚠️ 請把下方的 YOUR_DATABASE_URL 換成你的 Firebase 資料庫網址
 // -------------------------------------------------------------
 const firebaseConfig = {
-    databaseURL: "https://summer-vacation-9b29e-default-rtdb.firebaseio.com/" 
+    databaseURL: "https://points-system-5bd05-default-rtdb.firebaseio.com/" 
 };
 
 // 初始化 Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-// 使用獨立的 points_system_v3 路徑，徹底分流舊紀錄
-const rootRef = db.ref('points_system_v3');
-
 let systemData = { totalPoints: { "王思琪": 0 }, pendingRequests: {}, historyLogs: {} };
 let currentAdminPassword = "admin123"; 
 let isAdminAuthenticated = false;
 
-// 監聽全新獨立的雲端資料庫路徑
-rootRef.on('value', (snapshot) => {
+// 監聽雲端資料庫
+db.ref('points_system').on('value', (snapshot) => {
     const data = snapshot.val();
     if (data) {
         systemData.totalPoints = data.totalPoints || { "王思琪": 0 };
@@ -240,7 +237,7 @@ rootRef.on('value', (snapshot) => {
         systemData.historyLogs = data.historyLogs || {};
         currentAdminPassword = data.adminPassword || "admin123"; 
     } else {
-        rootRef.set({ ...systemData, adminPassword: "admin123" });
+        db.ref('points_system').set({ ...systemData, adminPassword: "admin123" });
     }
     document.getElementById('loadingOverlay').classList.add('d-none');
     render();
@@ -316,8 +313,8 @@ function submitEditLog() {
     const pointsDifference = newPts - oldPts;
     const currentTotalPts = systemData.totalPoints[user] || 0;
 
-    rootRef.child(`totalPoints/${user}`).set(currentTotalPts + pointsDifference);
-    rootRef.child(`historyLogs/${id}`).update({
+    db.ref(`points_system/totalPoints/${user}`).set(currentTotalPts + pointsDifference);
+    db.ref(`points_system/historyLogs/${id}`).update({
         time: newDate, task: newTask, points: newPts
     }).then(() => {
         alert("🎉 紀錄已成功修改！");
@@ -331,20 +328,24 @@ function deleteLog(id, user, points, task, type) {
         
         if(type !== '申請拒絕' && type !== '🚫 已刪除') {
             const updatedPoints = Math.max(0, currentTotalPts - points);
-            rootRef.child(`totalPoints/${user}`).set(updatedPoints);
+            db.ref(`points_system/totalPoints/${user}`).set(updatedPoints);
         }
         
-        rootRef.child(`historyLogs/${id}`).update({ type: "🚫 已刪除" }).then(() => {
+        db.ref(`points_system/historyLogs/${id}`).update({
+            type: "🚫 已刪除"
+        }).then(() => {
             alert("🗑️ 紀錄已成功變更為「已刪除」狀態！");
         });
     }
 }
 
+// ↩️ 重新核可（將被拒絕的項目改回批准狀態）
 function reApproveRequest(id, user, points) {
     if (confirm(`❓ 確定要將此筆被拒絕的項目重新改為「批准」並補發 ${points} 點給 ${user} 嗎？`)) {
         const currentTotalPts = systemData.totalPoints[user] || 0;
-        rootRef.child(`totalPoints/${user}`).set(currentTotalPts + points);
-        rootRef.child(`historyLogs/${id}`).update({
+        
+        db.ref(`points_system/totalPoints/${user}`).set(currentTotalPts + points);
+        db.ref(`points_system/historyLogs/${id}`).update({
             type: "申請核可",
             timestamp: Date.now()
         }).then(() => {
@@ -353,13 +354,22 @@ function reApproveRequest(id, user, points) {
     }
 }
 
+// 🧨 清除所有紀錄
 function clearAllLogs() {
     if (confirm("🚨 【警告】確定要清除所有紀錄嗎？\n這會將所有人點數歸零，現存歷史紀錄將全面更新為「🚫 已刪除」狀態並予以保留。")) {
         let updates = {};
-        Object.keys(systemData.totalPoints).forEach(user => { updates[`/totalPoints/${user}`] = 0; });
-        Object.keys(systemData.historyLogs).forEach(id => { updates[`/historyLogs/${id}/type`] = "🚫 已刪除"; });
+        
+        Object.keys(systemData.totalPoints).forEach(user => {
+            updates[`/totalPoints/${user}`] = 0;
+        });
+        
+        Object.keys(systemData.historyLogs).forEach(id => {
+            updates[`/historyLogs/${id}/type`] = "🚫 已刪除";
+        });
 
-        rootRef.update(updates).then(() => { alert("🧨 全新系統資料已清理重置！"); });
+        db.ref('points_system').update(updates).then(() => {
+            alert("🧨 系統資料已成功清理重置！");
+        });
     }
 }
 
@@ -385,7 +395,7 @@ function submitUserEditRequest() {
         return;
     }
 
-    rootRef.child(`pendingRequests/${id}`).update({
+    db.ref(`points_system/pendingRequests/${id}`).update({
         date: newDate, task: newTask, points: newPts
     }).then(() => {
         alert("✅ 申請資料已成功修改！");
@@ -395,7 +405,9 @@ function submitUserEditRequest() {
 
 function cancelRequest(id) {
     if (confirm("❓ 確定要取消這筆點數申請嗎？")) {
-        rootRef.child(`pendingRequests/${id}`).remove().then(() => { alert("❌ 申請已成功撤銷！"); });
+        db.ref(`points_system/pendingRequests/${id}`).remove().then(() => {
+            alert("❌ 申請已成功撤銷！");
+        });
     }
 }
 
@@ -405,7 +417,7 @@ function changeAdminPassword(e) {
     const newPwd = document.getElementById('newPasswordInput').value;
     const confirmPwd = document.getElementById('confirmPasswordInput').value;
     if (newPwd !== confirmPwd) { alert("❌ 密碼不一致！"); return; }
-    rootRef.child('adminPassword').set(newPwd).then(() => {
+    db.ref('points_system/adminPassword').set(newPwd).then(() => {
         alert("🎉 密碼已成功更新！");
         document.getElementById('newPasswordInput').value = '';
         document.getElementById('confirmPasswordInput').value = '';
@@ -420,7 +432,7 @@ function submitRequest(e) {
     const task = document.getElementById('reqTask').value;
     const points = parseInt(document.getElementById('reqPoints').value);
 
-    const newRequestRef = rootRef.child('pendingRequests').push();
+    const newRequestRef = db.ref('points_system/pendingRequests').push();
     newRequestRef.set({
         id: newRequestRef.key, user: user, date: date, task: task, points: points
     }).then(() => {
@@ -438,13 +450,13 @@ function directAddPoints(e) {
     const reason = document.getElementById('directReason').value;
     const currentPts = systemData.totalPoints[user] || 0;
     
-    const newLogRef = rootRef.child('historyLogs').push();
+    const newLogRef = db.ref('points_system/historyLogs').push();
     newLogRef.set({
         id: newLogRef.key, time: todayDate(), user: user, task: reason, points: points, type: "管理者直加", timestamp: Date.now()
     });
-    rootRef.child(`totalPoints/${user}`).set(currentPts + points);
+    db.ref(`points_system/totalPoints/${user}`).set(currentPts + points);
     
-    alert("🎉 雲端加點成功！");
+    alert(`🎉 雲端加點成功！`);
     document.getElementById('directReason').value = '';
     document.getElementById('directPoints').value = '1';
 }
@@ -452,21 +464,21 @@ function directAddPoints(e) {
 // --- 管理者批准 / 拒絕 ---
 function approveRequest(id, user, points, date, task) {
     const currentPts = systemData.totalPoints[user] || 0;
-    const newLogRef = rootRef.child('historyLogs').push();
+    const newLogRef = db.ref('points_system/historyLogs').push();
     newLogRef.set({
         id: newLogRef.key, time: date, user: user, task: task, points: points, type: "申請核可", timestamp: Date.now()
     });
-    rootRef.child(`totalPoints/${user}`).set(currentPts + points);
-    rootRef.child(`pendingRequests/${id}`).remove();
+    db.ref(`points_system/totalPoints/${user}`).set(currentPts + points);
+    db.ref(`points_system/pendingRequests/${id}`).remove();
 }
 
 function rejectRequest(id, user, points, date, task) {
     if (confirm("❓ 確定要拒絕這筆申請嗎？拒絕後項目會歸檔到歷史紀錄中。")) {
-        const newLogRef = rootRef.child('historyLogs').push();
+        const newLogRef = db.ref('points_system/historyLogs').push();
         newLogRef.set({
             id: newLogRef.key, time: date, user: user, task: task, points: points, type: "申請拒絕", timestamp: Date.now()
         });
-        rootRef.child(`pendingRequests/${id}`).remove();
+        db.ref(`points_system/pendingRequests/${id}`).remove();
     }
 }
 function todayDate() { return new Date().toISOString().split('T')[0]; }
@@ -489,4 +501,93 @@ function render() {
     // 1. 管理者端待審批渲染
     const pendingContainer = document.getElementById('pendingContainer');
     pendingContainer.innerHTML = '';
-    if(allRequests.length === 0)
+    if(allRequests.length === 0) {
+        pendingContainer.innerHTML = `<p class="text-muted small text-center my-3">目前沒有待審批的請求。</p>`;
+    } else {
+        allRequests.forEach(req => {
+            pendingContainer.innerHTML += `
+                <div class="p-3 bg-light rounded mb-2 border-start border-warning border-3">
+                    <div class="d-flex justify-content-between align-items-start mb-1">
+                        <span class="fw-bold small">${req.user} <span class="text-muted">(${req.date})</span></span>
+                        <span class="badge bg-warning text-dark">+${req.points} 點</span>
+                    </div>
+                    <p class="mb-2 small text-secondary">事項：${req.task}</p>
+                    <div class="d-flex justify-content-end gap-2">
+                        <button class="btn btn-sm btn-success py-0 px-2" onclick="approveRequest('${req.id}', '${req.user}', ${req.points}, '${req.date}', '${req.task}')">批准</button>
+                        <button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="rejectRequest('${req.id}', '${req.user}', ${req.points}, '${req.date}', '${req.task}')">拒絕</button>
+                    </div>
+                </div>`;
+        });
+    }
+
+    // 2. 使用者端「自己的待審批申請」渲染
+    const userPendingContainer = document.getElementById('userPendingContainer');
+    userPendingContainer.innerHTML = '';
+    const myRequests = allRequests.filter(req => req.user === currentUser);
+    if(myRequests.length === 0) {
+        userPendingContainer.innerHTML = `<p class="text-muted small text-center my-2">目前沒有等待審核中的申請。</p>`;
+    } else {
+        myRequests.forEach(req => {
+            userPendingContainer.innerHTML += `
+                <div class="p-2 bg-white rounded mb-2 border border-1 d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="fw-bold small">${req.task} <span class="badge bg-light text-primary">+${req.points} 點</span></div>
+                        <small class="text-muted">${req.date}</small>
+                    </div>
+                    <div>
+                        <button class="btn btn-sm btn-outline-primary py-0 px-1 me-1" onclick="openUserEditModal('${req.id}', '${req.date}', '${req.task}', ${req.points})">✏️修改</button>
+                        <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="cancelRequest('${req.id}')">❌取消</button>
+                    </div>
+                </div>`;
+        });
+    }
+
+    // 3. 歷史紀錄渲染
+    const logList = document.getElementById('historyLogList');
+    logList.innerHTML = '';
+    const sortedLogs = Object.values(systemData.historyLogs).sort((a, b) => b.timestamp - a.timestamp);
+    if(sortedLogs.length === 0) {
+        logList.innerHTML = `<li class="list-group-item text-muted text-center small py-3">暫無歷史異動紀錄</li>`;
+    } else {
+        sortedLogs.forEach(log => {
+            let typeColor = 'text-success';
+            let isDeletedMode = (log.type === "🚫 已刪除");
+            let isRejectedMode = (log.type === "申請拒絕");
+            
+            if(log.type === '管理者直加') typeColor = 'text-danger';
+            if(isRejectedMode) typeColor = 'text-muted fw-bold';
+            
+            let actionButtonsHtml = '';
+            if (isAdminAuthenticated) {
+                if (isDeletedMode) {
+                    actionButtonsHtml = ''; 
+                } else if (isRejectedMode) {
+                    actionButtonsHtml = `
+                        <button class="btn btn-sm btn-link text-success p-0 ms-2 small fw-bold" style="text-decoration:none;" onclick="reApproveRequest('${log.id}', '${log.user}', ${log.points})">↩️重新批准</button>
+                        <button class="btn btn-sm btn-link text-danger p-0 ms-2 small" style="text-decoration:none;" onclick="deleteLog('${log.id}', '${log.user}', ${log.points}, '${log.task}', '${log.type}')">🗑️刪除</button>
+                    `;
+                } else {
+                    actionButtonsHtml = `
+                        <button class="btn btn-sm btn-link text-primary p-0 ms-2 small" style="text-decoration:none;" onclick="openEditModal('${log.id}', '${log.user}', '${log.time}', '${log.task}', ${log.points})">✏️編輯</button>
+                        <button class="btn btn-sm btn-link text-danger p-0 ms-2 small" style="text-decoration:none;" onclick="deleteLog('${log.id}', '${log.user}', ${log.points}, '${log.task}', '${log.type}')">🗑️刪除</button>
+                    `;
+                }
+            }
+            
+            logList.innerHTML += `
+                <li class="list-group-item px-0 py-2 d-flex justify-content-between align-items-start ${isDeletedMode ? 'log-deleted' : ''}">
+                    <div class="ms-2 me-auto">
+                        <div class="fw-bold">${log.user} <span class="badge bg-light text-muted fw-normal">${log.time}</span>${actionButtonsHtml}</div>
+                        <span class="text-secondary">${log.task}</span> <span class="small ${typeColor}">(${log.type})</span>
+                    </div>
+                    <span class="badge ${isDeletedMode ? 'bg-light text-muted' : (isRejectedMode ? 'bg-danger':'bg-secondary')} rounded-pill">${isDeletedMode ? '0':'+'+log.points}</span>
+                </li>`;
+        });
+    }
+}
+
+function updateUserPointsView() { render(); }
+document.getElementById('reqDate').value = todayDate();
+</script>
+</body>
+</html>
