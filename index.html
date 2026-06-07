@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🪙 雲端同步點數管理系統 (軌跡留存版)</title>
+    <title>🪙 雲端同步點數管理系統 (完美保留版)</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -91,7 +91,7 @@
 
 <div class="container py-4">
     <header class="pb-3 mb-4 border-bottom d-flex justify-content-between align-items-center">
-        <span class="fs-4 fw-bold">☁️ 雲端點數集點管理系統 <span class="badge bg-secondary fs-6 fw-normal">軌跡留存版</span></span>
+        <span class="fs-4 fw-bold">☁️ 雲端點數集點管理系統 <span class="badge bg-secondary fs-6 fw-normal">完美刪改版</span></span>
         <div class="btn-group" role="group">
             <input type="radio" class="btn-check" name="roleSwitch" id="roleUser" checked onclick="switchRole('user')">
             <label class="btn btn-outline-primary" for="roleUser">👤 使用者端</label>
@@ -171,7 +171,7 @@
 
                 <div class="card p-4 border border-danger">
                     <h3 class="card-title h5 mb-3 fw-bold text-dark">🔑 管理者密碼設定</h3>
-                    <form onsubmit="changeAdminPassword(event)" class="row g-3 mb-3">
+                    <form onsubmit="changeAdminPassword(event)" class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label">輸入新密碼</label>
                             <input type="password" class="form-control" id="newPasswordInput" placeholder="請輸入新密碼" required>
@@ -202,7 +202,7 @@
             <div class="card p-3">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h3 class="card-title h6 fw-bold mb-0">📜 全系統異動歷史紀錄</h3>
-                    <button id="clearAllLogsBtn" class="btn btn-sm btn-danger py-0 d-none" onclick="clearAllLogs()">🧨 清除所有紀錄</button>
+                    <button id="clearAllLogsBtn" class="btn btn-xs btn-danger py-0 px-1 d-none" style="font-size:0.75rem;" onclick="clearAllLogs()">🧨 清除所有紀錄</button>
                 </div>
                 <div style="max-height: 520px; overflow-y: auto;">
                     <ul class="list-group list-group-flush small" id="historyLogList"></ul>
@@ -322,63 +322,53 @@ function submitEditLog() {
     });
 }
 
-// 變更為「被刪除的項目不消失但顯示已刪除」
 function deleteLog(id, user, points, task, type) {
-    if (confirm(`⚠️ 確定要刪除此筆紀錄嗎？\n項目不會消失，但會標記為「已刪除」並扣回 ${points} 點。`)) {
+    if (confirm(`⚠️ 確定要將此筆紀錄標記為已刪除嗎？\n點數將會自動扣回 ${points} 點。`)) {
         const currentTotalPts = systemData.totalPoints[user] || 0;
         
-        // 1. 如果原先不是拒絕或被刪除的狀態，才需要扣除分數
         if(type !== '申請拒絕' && type !== '🚫 已刪除') {
             const updatedPoints = Math.max(0, currentTotalPts - points);
             db.ref(`points_system/totalPoints/${user}`).set(updatedPoints);
         }
         
-        // 2. 將該筆歷史紀錄的類型更改為 "🚫 已刪除" 儲存
         db.ref(`points_system/historyLogs/${id}`).update({
             type: "🚫 已刪除"
         }).then(() => {
-            alert("🗑️ 紀錄已成功標記為已刪除，點數已同步扣回！");
+            alert("🗑️ 紀錄已成功變更為「已刪除」狀態！");
         });
     }
 }
 
-// ↩️ 重新將被拒絕的項目改為批准狀態
+// ↩️ 重新核可（將被拒絕的項目改回批准狀態）
 function reApproveRequest(id, user, points) {
-    if (confirm(`❓ 確定要把此筆被拒絕的項目重新改為「批准」並補發 ${points} 點給 ${user} 嗎？`)) {
+    if (confirm(`❓ 確定要將此筆被拒絕的項目重新改為「批准」並補發 ${points} 點給 ${user} 嗎？`)) {
         const currentTotalPts = systemData.totalPoints[user] || 0;
         
-        // 1. 補發點數
         db.ref(`points_system/totalPoints/${user}`).set(currentTotalPts + points);
-        
-        // 2. 更新紀錄狀態為「申請核可」
         db.ref(`points_system/historyLogs/${id}`).update({
             type: "申請核可",
-            timestamp: Date.now() // 更新排序時間
+            timestamp: Date.now()
         }).then(() => {
-            alert("🎉 項目已重新批准，點數已成功補發！");
+            alert("🎉 項目已重新批准並同步發放點數！");
         });
     }
 }
 
-// 🧨 清除目前所有的紀錄（全部標記為已刪除，分數重置為0）
+// 🧨 清除所有紀錄
 function clearAllLogs() {
-    if (confirm("🚨 【危險操作】確定要清除目前所有的紀錄嗎？\n現有紀錄均會被標記為「已刪除」保留在歷史中，且使用者的點數會全部歸零！")) {
-        const updates = {};
+    if (confirm("🚨 【警告】確定要清除所有紀錄嗎？\n這會將所有人點數歸零，現存歷史紀錄將全面更新為「🚫 已刪除」狀態並予以保留。")) {
+        let updates = {};
         
-        // 1. 將所有使用者分數重置
         Object.keys(systemData.totalPoints).forEach(user => {
-            updates[`points_system/totalPoints/${user}`] = 0;
+            updates[`/totalPoints/${user}`] = 0;
         });
         
-        // 2. 將所有有效紀錄標記為已刪除
-        Object.entries(systemData.historyLogs).forEach(([id, log]) => {
-            if (log.type !== '🚫 已刪除') {
-                updates[`points_system/historyLogs/${id}/type`] = "🚫 已刪除";
-            }
+        Object.keys(systemData.historyLogs).forEach(id => {
+            updates[`/historyLogs/${id}/type`] = "🚫 已刪除";
         });
 
-        db.ref().update(updates).then(() => {
-            alert("🧨 所有現存紀錄已全數更改為「已刪除」狀態，使用者點數已歸零！");
+        db.ref('points_system').update(updates).then(() => {
+            alert("🧨 系統資料已成功清理重置！");
         });
     }
 }
@@ -482,7 +472,6 @@ function approveRequest(id, user, points, date, task) {
     db.ref(`points_system/pendingRequests/${id}`).remove();
 }
 
-// 變更拒絕邏輯：被拒絕的項目不消失，直接進入歷史紀錄
 function rejectRequest(id, user, points, date, task) {
     if (confirm("❓ 確定要拒絕這筆申請嗎？拒絕後項目會歸檔到歷史紀錄中。")) {
         const newLogRef = db.ref('points_system/historyLogs').push();
@@ -553,7 +542,7 @@ function render() {
         });
     }
 
-    // 3. 歷史紀錄渲染 (被刪除/被拒絕的會被標記保留)
+    // 3. 歷史紀錄渲染
     const logList = document.getElementById('historyLogList');
     logList.innerHTML = '';
     const sortedLogs = Object.values(systemData.historyLogs).sort((a, b) => b.timestamp - a.timestamp);
@@ -568,20 +557,16 @@ function render() {
             if(log.type === '管理者直加') typeColor = 'text-danger';
             if(isRejectedMode) typeColor = 'text-muted fw-bold';
             
-            // 按鈕生成控制
             let actionButtonsHtml = '';
             if (isAdminAuthenticated) {
                 if (isDeletedMode) {
-                    // 已刪除項目不顯示任何控制按鈕
                     actionButtonsHtml = ''; 
                 } else if (isRejectedMode) {
-                    // 🚩 被拒絕的項目：管理者可以「重新核可」或「刪除(留存標記)」
                     actionButtonsHtml = `
                         <button class="btn btn-sm btn-link text-success p-0 ms-2 small fw-bold" style="text-decoration:none;" onclick="reApproveRequest('${log.id}', '${log.user}', ${log.points})">↩️重新批准</button>
                         <button class="btn btn-sm btn-link text-danger p-0 ms-2 small" style="text-decoration:none;" onclick="deleteLog('${log.id}', '${log.user}', ${log.points}, '${log.task}', '${log.type}')">🗑️刪除</button>
                     `;
                 } else {
-                    // 正常加點/核可項目
                     actionButtonsHtml = `
                         <button class="btn btn-sm btn-link text-primary p-0 ms-2 small" style="text-decoration:none;" onclick="openEditModal('${log.id}', '${log.user}', '${log.time}', '${log.task}', ${log.points})">✏️編輯</button>
                         <button class="btn btn-sm btn-link text-danger p-0 ms-2 small" style="text-decoration:none;" onclick="deleteLog('${log.id}', '${log.user}', ${log.points}, '${log.task}', '${log.type}')">🗑️刪除</button>
